@@ -7,24 +7,34 @@ from datetime import datetime
 # --- 页面设置 ---
 st.set_page_config(page_title="全能资产助手", layout="wide")
 st.title("💰 资产管理与记账可视化")
+# --- 1. 连接与数据读取 (跳过库插件，直接读 CSV 链接) ---
+sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+# 提取表格的基础 ID
+base_url = sheet_url.split("/edit")[0]
 
-# --- 连接 Google Sheets ---
+def load_gsheet_data(worksheet_name):
+    # 通过 Google 的 export 接口直接获取 CSV
+    csv_url = f"{base_url}/gviz/tq?tqx=out:csv&sheet={worksheet_name}"
+    try:
+        data = pd.read_csv(csv_url)
+        # 如果表是空的，构造一个带表头的 DataFrame
+        if data.empty:
+            if worksheet_name == "Expenses":
+                return pd.DataFrame(columns=["日期", "分类", "金额", "备注"])
+            else:
+                return pd.DataFrame(columns=["资产项", "类型", "当前余额/价值"])
+        return data
+    except Exception as e:
+        # 如果读取失败，返回空表
+        return pd.DataFrame()
+
+# 执行读取
+df_exp = load_gsheet_data("Expenses")
+df_assets = load_gsheet_data("Assets")
+
+# --- 2. 依然保留 conn 对象用于写入数据 ---
+# 写入操作还是用 st-gsheets-connection 最方便
 conn = st.connection("gsheets", type=GSheetsConnection)
-
-# --- 侧边栏：配置与输入 ---
-st.sidebar.header("⚙️ 配置与输入")
-
-# 1. 自定义分类功能
-custom_categories = st.sidebar.text_input("自定义记账分类（逗号隔开）", "餐饮,交通,购物,居住,娱乐,其他")
-categories = [c.strip() for c in custom_categories.split(",")]
-
-# 导航菜单
-menu = st.sidebar.radio("跳转页面", ["日常记账", "资产大盘", "对账统计"])
-
-# --- 逻辑处理：读取数据 ---
-# 注意：这里假设 Google Sheets 已经初始化了两个 Sheet
-# --- 增强版读取逻辑 ---
-sheet_base_url = st.secrets["connections"]["gsheets"]["spreadsheet"].split("/edit")[0]
 
 def get_data(worksheet_name):
     # 构造导出 CSV 的直接链接，这种方式最不容易报 400 错误
@@ -116,5 +126,6 @@ elif menu == "对账统计":
         period_df = df_exp[df_exp[group_col] == selected_period]
         fig_period_pie = px.sunburst(period_df, path=['分类', '备注'], values='金额', title=f"{selected_period} 支出分布")
         st.plotly_chart(fig_period_pie)
+
 
 
