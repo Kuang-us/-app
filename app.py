@@ -7,17 +7,20 @@ from datetime import datetime
 # --- 页面设置 ---
 st.set_page_config(page_title="全能资产助手", layout="wide")
 st.title("💰 资产管理与记账可视化")
-# --- 1. 连接与数据读取 (跳过库插件，直接读 CSV 链接) ---
-sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
-# 提取表格的基础 ID
-base_url = sheet_url.split("/edit")[0]
 
-def load_gsheet_data(worksheet_name):
-    # 通过 Google 的 export 接口直接获取 CSV
-    csv_url = f"{base_url}/gviz/tq?tqx=out:csv&sheet={worksheet_name}"
+# --- 1. 获取基础链接 ---
+# 确保你的 Secrets 里已经填好了 spreadsheet 链接
+sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+# 自动提取基础 ID 部分，不管你填的是 /edit 还是 /view 结尾
+sheet_base_url = sheet_url.split("/edit")[0].split("/view")[0]
+
+# --- 2. 定义读取函数 ---
+def get_data(worksheet_name):
+    # 构造 Google 的数据查询接口 URL
+    url = f"{sheet_base_url}/gviz/tq?tqx=out:csv&sheet={worksheet_name}"
     try:
-        data = pd.read_csv(csv_url)
-        # 如果表是空的，构造一个带表头的 DataFrame
+        data = pd.read_csv(url)
+        # 如果读取到的数据是空的（只有标题或者全空）
         if data.empty:
             if worksheet_name == "Expenses":
                 return pd.DataFrame(columns=["日期", "分类", "金额", "备注"])
@@ -25,15 +28,14 @@ def load_gsheet_data(worksheet_name):
                 return pd.DataFrame(columns=["资产项", "类型", "当前余额/价值"])
         return data
     except Exception as e:
-        # 如果读取失败，返回空表
+        st.error(f"读取 {worksheet_name} 失败: {e}")
         return pd.DataFrame()
 
-# 执行读取
-df_exp = load_gsheet_data("Expenses")
-df_assets = load_gsheet_data("Assets")
+# --- 3. 执行读取 ---
+df_exp = get_data("Expenses")
+df_assets = get_data("Assets")
 
-# --- 2. 依然保留 conn 对象用于写入数据 ---
-# 写入操作还是用 st-gsheets-connection 最方便
+# --- 4. 初始化连接对象（用于后面的写入操作） ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data(worksheet_name):
