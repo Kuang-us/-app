@@ -23,8 +23,17 @@ menu = st.sidebar.radio("跳转页面", ["日常记账", "资产大盘", "对账
 
 # --- 逻辑处理：读取数据 ---
 # 注意：这里假设 Google Sheets 已经初始化了两个 Sheet
-df_exp = conn.read(worksheet="Expenses")
-df_assets = conn.read(worksheet="Assets")
+# --- 逻辑处理：读取数据 (增强版) ---
+try:
+    # 尝试读取，如果不指定 worksheet，它默认读第一个 Sheet
+    df_exp = conn.read(worksheet="Expenses", ttl=0)
+    df_assets = conn.read(worksheet="Assets", ttl=0)
+except Exception as e:
+    st.error(f"连接 Google Sheets 失败了！错误信息: {e}")
+    st.info("请检查：1. Secrets 里的 URL 是否正确；2. Google 表格的标签页名称是否真的是 Expenses 和 Assets。")
+    # 备选方案：如果报错，创建一个空的 DataFrame 防止后面代码崩溃
+    df_exp = pd.DataFrame(columns=["日期", "分类", "金额", "备注"])
+    df_assets = pd.DataFrame(columns=["资产项", "类型", "当前余额/价值"])
 
 # --- 页面 1：日常记账 ---
 if menu == "日常记账":
@@ -99,3 +108,4 @@ elif menu == "对账统计":
         period_df = df_exp[df_exp[group_col] == selected_period]
         fig_period_pie = px.sunburst(period_df, path=['分类', '备注'], values='金额', title=f"{selected_period} 支出分布")
         st.plotly_chart(fig_period_pie)
+
