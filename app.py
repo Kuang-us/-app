@@ -23,17 +23,25 @@ menu = st.sidebar.radio("跳转页面", ["日常记账", "资产大盘", "对账
 
 # --- 逻辑处理：读取数据 ---
 # 注意：这里假设 Google Sheets 已经初始化了两个 Sheet
-# --- 逻辑处理：读取数据 (增强版) ---
-try:
-    # 尝试读取，如果不指定 worksheet，它默认读第一个 Sheet
-    df_exp = conn.read(worksheet="Expenses", ttl=0)
-    df_assets = conn.read(worksheet="Assets", ttl=0)
-except Exception as e:
-    st.error(f"连接 Google Sheets 失败了！错误信息: {e}")
-    st.info("请检查：1. Secrets 里的 URL 是否正确；2. Google 表格的标签页名称是否真的是 Expenses 和 Assets。")
-    # 备选方案：如果报错，创建一个空的 DataFrame 防止后面代码崩溃
-    df_exp = pd.DataFrame(columns=["日期", "分类", "金额", "备注"])
-    df_assets = pd.DataFrame(columns=["资产项", "类型", "当前余额/价值"])
+# --- 增强版读取逻辑 ---
+sheet_base_url = st.secrets["connections"]["gsheets"]["spreadsheet"].split("/edit")[0]
+
+def get_data(worksheet_name):
+    # 构造导出 CSV 的直接链接，这种方式最不容易报 400 错误
+    url = f"{sheet_base_url}/gviz/tq?tqx=out:csv&sheet={worksheet_name}"
+    try:
+        return pd.read_csv(url)
+    except Exception as e:
+        st.error(f"无法读取工作表 {worksheet_name}: {e}")
+        return pd.DataFrame()
+
+# 调用函数读取两个工作表
+df_exp = get_data("Expenses")
+df_assets = get_data("Assets")
+
+# 检查是否成功
+if df_exp.empty and df_assets.empty:
+    st.warning("⚠️ 未能从 Google Sheets 读取到数据，请检查工作表名称是否完全匹配（Expenses 和 Assets）")
 
 # --- 页面 1：日常记账 ---
 if menu == "日常记账":
@@ -108,4 +116,5 @@ elif menu == "对账统计":
         period_df = df_exp[df_exp[group_col] == selected_period]
         fig_period_pie = px.sunburst(period_df, path=['分类', '备注'], values='金额', title=f"{selected_period} 支出分布")
         st.plotly_chart(fig_period_pie)
+
 
